@@ -1,5 +1,34 @@
 import 'package:flutter/material.dart';
-import 'inline_inspection_summary.dart';
+
+void main() {
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Inspection Form',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        useMaterial3: true,
+      ),
+      home: InspectionForm(
+        machineId: "M-12345",
+        inspectionType: "Inline",
+        roundCount: 5,
+        onClose: () {},
+        onSubmit: (faults) {},
+        onSummary: (data) {},
+        currentFaults: const [],
+        previousStatus: "Green",
+        lineNumber: "Line 12",
+      ),
+    );
+  }
+}
 
 class InspectionForm extends StatefulWidget {
   final String machineId;
@@ -33,7 +62,8 @@ class InspectionForm extends StatefulWidget {
   _InspectionFormState createState() => _InspectionFormState();
 }
 
-class _InspectionFormState extends State<InspectionForm> {
+class _InspectionFormState extends State<InspectionForm>
+    with SingleTickerProviderStateMixin {
   final List<String> _bundles = [
     "1-92-PO-SO-24-093432",
     "2-92-PO-SO-24-093432",
@@ -44,12 +74,7 @@ class _InspectionFormState extends State<InspectionForm> {
     "7-92-PO-SO-24-093433",
     "8-92-PO-SO-24-093564",
     "9-92-PO-SO-24-093432",
-    "45-92-PO-SO-24-093432",
-    "46-92-PO-SO-24-093432",
-    "451-92-PO-SO-24-093432",
-    "167-92-PO-SO-24-093432",
-    "41-92-PO-SO-24-093432",
-    "81-92-PO-SO-24-093432",
+    "45-92-PO-SO-24-09343",
   ];
   final List<String> _operators = [
     "Ms. BUSHRA ANDLEEB",
@@ -60,9 +85,6 @@ class _InspectionFormState extends State<InspectionForm> {
     "Mr. HABIB",
     "Mr. TAYYAB",
   ];
-  final List<String> _sizes = ["7/2", "9/2", "11/2", "13/2"];
-  final List<String> _styles = ["13231409", "13231410", "13231411"];
-  final List<String> _colors = ["DRKSPHBAOP", "LTSPHBAOP", "MDSPHBAOP"];
   final List<String> _shifts = ["Morning", "Evening", "Night"];
   final List<String> _operations = ["Sewing"];
 
@@ -96,8 +118,15 @@ class _InspectionFormState extends State<InspectionForm> {
   String? _selectedOperator;
   String? _selectedShift;
   String? _selectedOperation;
-  String? _selectedMaintenanceNote;
   bool _showMaintenanceNotes = false;
+
+  // Form validation
+  final _formKey = GlobalKey<FormState>();
+  bool _isSubmitting = false;
+
+  // Animation controllers
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
@@ -106,12 +135,31 @@ class _InspectionFormState extends State<InspectionForm> {
     // Set default values
     _selectedShift = _shifts.first;
     _selectedOperation = _operations.first;
+    _selectedOperator = widget.selectedOperator ?? _operators.first;
 
     // If it's a maintenance inspection, show maintenance notes by default
     if (widget.isMaintenanceInspection) {
       _showMaintenanceNotes = true;
-      _selectedMaintenanceNote = _maintenanceNotes.first;
     }
+
+    // Initialize animations
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _fadeController,
+        curve: Curves.easeIn,
+      ),
+    );
+    _fadeController.forward();
+  }
+
+  @override
+  void dispose() {
+    _fadeController.dispose();
+    super.dispose();
   }
 
   // Get filtered faults based on search query
@@ -119,21 +167,21 @@ class _InspectionFormState extends State<InspectionForm> {
     if (_faultSearchQuery.isEmpty) {
       return widget.isMaintenanceInspection ? _maintenanceNotes : _allFaults;
     }
-    final listToSearch = widget.isMaintenanceInspection
-        ? _maintenanceNotes
-        : _allFaults;
+    final listToSearch =
+    widget.isMaintenanceInspection ? _maintenanceNotes : _allFaults;
     return listToSearch
         .where(
-          (item) =>
-              item.toLowerCase().contains(_faultSearchQuery.toLowerCase()),
-        )
+          (item) => item.toLowerCase().contains(_faultSearchQuery.toLowerCase()),
+    )
         .toList();
   }
 
   // Add a fault to the selected list
   void _addFault(String fault) {
     setState(() {
-      _selectedFaults.add(fault);
+      if (!_selectedFaults.contains(fault)) {
+        _selectedFaults.add(fault);
+      }
     });
   }
 
@@ -144,25 +192,50 @@ class _InspectionFormState extends State<InspectionForm> {
     });
   }
 
-  void _submitForm() {
-    if (_selectedBundle == null || _selectedOperator == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please select bundle and operator"),
-          backgroundColor: Colors.red,
-        ),
-      );
+  void _submitForm() async {
+    if (!_formKey.currentState!.validate()) {
       return;
     }
 
+    setState(() {
+      _isSubmitting = true;
+    });
+
     // For maintenance inspections, require at least one note
-    if (widget.isMaintenanceInspection && _selectedFaults.isEmpty) {
+    if ((_showMaintenanceNotes || widget.isMaintenanceInspection) &&
+        _selectedFaults.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please add maintenance notes"),
-          backgroundColor: Colors.red,
+        SnackBar(
+          content: const Text("Please add at least one maintenance note"),
+          backgroundColor: Colors.red[400],
+          behavior: SnackBarBehavior.floating,
+          shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
+      setState(() {
+        _isSubmitting = false;
+      });
+      return;
+    }
+
+    // For regular inspections, require at least one fault if not maintenance mode
+    if (!_showMaintenanceNotes &&
+        !widget.isMaintenanceInspection &&
+        _selectedFaults.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+              "Please add at least one fault or switch to maintenance mode"),
+          backgroundColor: Colors.red[200],
+          behavior: SnackBarBehavior.floating,
+          shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+      setState(() {
+        _isSubmitting = false;
+      });
       return;
     }
 
@@ -173,11 +246,18 @@ class _InspectionFormState extends State<InspectionForm> {
       'selectedFaults': _selectedFaults,
       'shift': _selectedShift!,
       'operation': _selectedOperation!,
-      'isMaintenance': widget.isMaintenanceInspection,
+      'isMaintenance': _showMaintenanceNotes || widget.isMaintenanceInspection,
     };
+
+    // Simulate API call delay
+    await Future.delayed(const Duration(milliseconds: 500));
 
     // Use the onSummary callback to navigate to summary screen
     widget.onSummary(formData);
+
+    setState(() {
+      _isSubmitting = false;
+    });
   }
 
   void _toggleMaintenanceNotes() {
@@ -192,320 +272,512 @@ class _InspectionFormState extends State<InspectionForm> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.blue,
-      appBar: AppBar(
-        title: Text(
-          widget.isMaintenanceInspection
-              ? "Maintenance Form"
-              : "Inline Inspection Form",
-        ),
-        backgroundColor: widget.isMaintenanceInspection
-            ? Colors.blue[800]
-            : Colors.blue[800],
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => widget.onClose(),
-        ),
-      ),
       body: Container(
-        color: Colors.grey[100],
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            children: [
-              // Form fields
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.blue.shade50,
+              Colors.blue.shade100,
+              Colors.blue.shade200,
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: Column(
+              children: [
+                // App Bar
+                Container(
+                  margin: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.blue.withOpacity(0.2),
+                        blurRadius: 10,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Row(
                     children: [
-                      // Maintenance Toggle (only show for regular inspections)
-                      if (!widget.isMaintenanceInspection) ...[
-                        _buildFormSection("Inspection Type", [
-                          SwitchListTile(
-                            title: const Text("Maintenance Inspection"),
-                            subtitle: const Text("Switch to maintenance mode"),
-                            value: _showMaintenanceNotes,
-                            onChanged: (value) {
-                              setState(() {
-                                _showMaintenanceNotes = value;
-                                if (_showMaintenanceNotes) {
-                                  _selectedFaults.clear();
-                                }
-                              });
-                            },
-                            activeColor: Colors.blue,
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back, color: Colors.blue),
+                        onPressed: () => widget.onClose(),
+                      ),
+                      Expanded(
+                        child: Text(
+                          widget.isMaintenanceInspection
+                              ? "Maintenance Form"
+                              : "Inline Inspection Form",
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue,
                           ),
-                        ]),
-                      ],
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      const SizedBox(width: 48), // For balance
+                    ],
+                  ),
+                ),
 
-                      // Basic Information
-                      _buildFormSection("Basic Information", [
-                        _buildDropdownField("Shift", _selectedShift, _shifts, (
-                          value,
-                        ) {
-                          setState(() {
-                            _selectedShift = value;
-                          });
-                        }),
-                        _buildDropdownField(
-                          "SO #",
-                          _selectedBundle,
-                          _bundles,
-                          (value) {
-                            setState(() {
-                              _selectedBundle = value;
-                            });
-                          },
-                        ),
-                        _buildDropdownField(
-                          "Operation",
-                          _selectedOperation,
-                          _operations,
-                          (value) {
-                            setState(() {
-                              _selectedOperation = value;
-                            });
-                          },
-                        ),
-                        _buildDropdownField(
-                          "Machine Operator",
-                          _selectedOperator,
-                          _operators,
-                          (value) {
-                            setState(() {
-                              _selectedOperator = value;
-                            });
-                          },
-                        ),
-                      ]),
-
-                      // Faults or Maintenance Notes Section
-                      _buildFormSection(
-                        _showMaintenanceNotes || widget.isMaintenanceInspection
-                            ? "Maintenance Notes"
-                            : "Faults",
-                        [
-                          // Faults/Maintenance Dropdown with Search
-                          Container(
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.grey),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: ExpansionTile(
-                              initiallyExpanded: _showFaultsDropdown,
-                              onExpansionChanged: (expanded) {
-                                setState(() {
-                                  _showFaultsDropdown = expanded;
-                                });
-                              },
-                              title: Text(
-                                _showMaintenanceNotes ||
-                                        widget.isMaintenanceInspection
-                                    ? "Select Maintenance Notes"
-                                    : "Select Faults",
-                              ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        children: [
+                          // Machine Info Card
+                          _buildCard(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Padding(
-                                  padding: const EdgeInsets.all(8.0),
-                                  child: TextField(
-                                    decoration: InputDecoration(
-                                      hintText:
-                                          _showMaintenanceNotes ||
-                                              widget.isMaintenanceInspection
-                                          ? "Search maintenance notes..."
-                                          : "Search faults...",
-                                      prefixIcon: const Icon(Icons.search),
-                                      border: const OutlineInputBorder(),
-                                    ),
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _faultSearchQuery = value;
-                                      });
-                                    },
+                                const Text(
+                                  "Machine Information",
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue,
                                   ),
                                 ),
-                                Container(
-                                  constraints: const BoxConstraints(
-                                    maxHeight: 200,
-                                  ),
-                                  child: ListView.builder(
-                                    shrinkWrap: true,
-                                    itemCount: _filteredFaults.length,
-                                    itemBuilder: (context, index) {
-                                      final item = _filteredFaults[index];
-                                      return ListTile(
-                                        title: Text(item),
-                                        onTap: () {
-                                          _addFault(item);
-                                        },
-                                      );
-                                    },
-                                  ),
+                                const SizedBox(height: 16),
+                                Row(
+                                  children: [
+                                    _buildInfoItem("Machine ID", widget.machineId),
+                                    const SizedBox(width: 16),
+                                    _buildInfoItem("Line", widget.lineNumber),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    _buildInfoItem("Previous Status", widget.previousStatus),
+                                    const SizedBox(width: 16),
+                                    _buildInfoItem("Round", "${widget.roundCount}"),
+                                  ],
                                 ),
                               ],
                             ),
                           ),
 
-                          // Selected Faults/Maintenance Notes List
-                          if (_selectedFaults.isNotEmpty) ...[
-                            const SizedBox(height: 16),
-                            Text(
-                              _showMaintenanceNotes ||
-                                      widget.isMaintenanceInspection
-                                  ? "Selected Maintenance Notes:"
-                                  : "Selected Faults:",
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
+                          const SizedBox(height: 20),
+
+                          // Maintenance Toggle (only show for regular inspections)
+                          if (!widget.isMaintenanceInspection) ...[
+                            _buildCard(
+                              child: SwitchListTile(
+                                title: const Text(
+                                  "Maintenance Inspection",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue,
+                                  ),
+                                ),
+                                subtitle: const Text(
+                                  "Switch to maintenance mode",
+                                  style: TextStyle(color: Colors.grey),
+                                ),
+                                value: _showMaintenanceNotes,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _showMaintenanceNotes = value;
+                                    if (_showMaintenanceNotes) {
+                                      _selectedFaults.clear();
+                                    }
+                                  });
+                                },
+                                activeColor: Colors.blue,
+                                inactiveThumbColor: Colors.grey,
                               ),
                             ),
-                            const SizedBox(height: 8),
-                            ListView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: _selectedFaults.length,
-                              itemBuilder: (context, index) {
-                                return Container(
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        (_showMaintenanceNotes ||
-                                            widget.isMaintenanceInspection)
-                                        ? Colors.blue[100]
-                                        : Colors.grey[200],
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(
-                                      color:
-                                          (_showMaintenanceNotes ||
-                                              widget.isMaintenanceInspection)
-                                          ? Colors.blue[300]!
-                                          : Colors.grey[400]!,
-                                    ),
+                            const SizedBox(height: 20),
+                          ],
+
+                          // Basic Information
+                          _buildCard(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  "Basic Information",
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue,
                                   ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(_selectedFaults[index]),
+                                ),
+                                const SizedBox(height: 16),
+                                _buildDropdownField(
+                                  "Shift *",
+                                  _selectedShift,
+                                  _shifts,
+                                      (value) {
+                                    setState(() {
+                                      _selectedShift = value;
+                                    });
+                                  },
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please select a shift';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                _buildDropdownField(
+                                  "SO # *",
+                                  _selectedBundle,
+                                  _bundles,
+                                      (value) {
+                                    setState(() {
+                                      _selectedBundle = value;
+                                    });
+                                  },
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please select a bundle';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                _buildDropdownField(
+                                  "Operation *",
+                                  _selectedOperation,
+                                  _operations,
+                                      (value) {
+                                    setState(() {
+                                      _selectedOperation = value;
+                                    });
+                                  },
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please select an operation';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                _buildDropdownField(
+                                  "Machine Operator *",
+                                  _selectedOperator,
+                                  _operators,
+                                      (value) {
+                                    setState(() {
+                                      _selectedOperator = value;
+                                    });
+                                  },
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please select an operator';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // Faults or Maintenance Notes Section
+                          _buildCard(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _showMaintenanceNotes || widget.isMaintenanceInspection
+                                      ? "Maintenance Notes"
+                                      : "Faults",
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+
+                                // Faults/Maintenance Dropdown with Search
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.grey.shade300),
+                                  ),
+                                  child: ExpansionTile(
+                                    initiallyExpanded: _showFaultsDropdown,
+                                    onExpansionChanged: (expanded) {
+                                      setState(() {
+                                        _showFaultsDropdown = expanded;
+                                      });
+                                    },
+                                    title: Text(
+                                      _showMaintenanceNotes || widget.isMaintenanceInspection
+                                          ? "Select Maintenance Notes"
+                                          : "Select Faults",
+                                      style: const TextStyle(
+                                        color: Colors.blue,
+                                        fontSize: 16,
                                       ),
-                                      IconButton(
-                                        icon: const Icon(Icons.close, size: 20),
-                                        onPressed: () => _removeFault(index),
+                                    ),
+                                    trailing: Icon(
+                                      _showFaultsDropdown ? Icons.expand_less : Icons.expand_more,
+                                      color: Colors.blue,
+                                    ),
+                                    children: [
+                                      Padding(
+                                        padding: const EdgeInsets.all(12),
+                                        child: TextField(
+                                          onChanged: (value) {
+                                            setState(() {
+                                              _faultSearchQuery = value;
+                                            });
+                                          },
+                                          decoration: InputDecoration(
+                                            hintText: _showMaintenanceNotes || widget.isMaintenanceInspection
+                                                ? "Search maintenance notes..."
+                                                : "Search faults...",
+                                            hintStyle: const TextStyle(color: Colors.grey),
+                                            prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                                            border: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(12),
+                                              borderSide: BorderSide.none,
+                                            ),
+                                            filled: true,
+                                            fillColor: Colors.grey.shade50,
+                                            contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                          ),
+                                          style: const TextStyle(color: Colors.black),
+                                        ),
+                                      ),
+                                      Container(
+                                        constraints: const BoxConstraints(maxHeight: 200),
+                                        child: ListView.builder(
+                                          shrinkWrap: true,
+                                          itemCount: _filteredFaults.length,
+                                          itemBuilder: (context, index) {
+                                            final item = _filteredFaults[index];
+                                            return ListTile(
+                                              title: Text(
+                                                item,
+                                                style: const TextStyle(color: Colors.black),
+                                              ),
+                                              onTap: () {
+                                                _addFault(item);
+                                              },
+                                              trailing: _selectedFaults.contains(item)
+                                                  ? const Icon(Icons.check, color: Colors.green)
+                                                  : null,
+                                            );
+                                          },
+                                        ),
                                       ),
                                     ],
                                   ),
-                                );
-                              },
-                            ),
-                          ],
+                                ),
 
-                          // Info message for maintenance
-                          if (_showMaintenanceNotes ||
-                              widget.isMaintenanceInspection) ...[
-                            const SizedBox(height: 16),
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.blue[50],
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.blue[200]!),
-                              ),
-                              child: const Row(
-                                children: [
-                                  Icon(
-                                    Icons.info,
-                                    color: Colors.blue,
-                                    size: 20,
+                                // Selected Faults/Maintenance Notes List
+                                if (_selectedFaults.isNotEmpty) ...[
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    _showMaintenanceNotes || widget.isMaintenanceInspection
+                                        ? "Selected Maintenance Notes:"
+                                        : "Selected Faults:",
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue,
+                                    ),
                                   ),
-                                  SizedBox(width: 8),
-                                  Expanded(
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: List.generate(_selectedFaults.length, (index) {
+                                      return Chip(
+                                        label: Text(
+                                          _selectedFaults[index],
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: (_showMaintenanceNotes || widget.isMaintenanceInspection)
+                                                ? Colors.blue[800]
+                                                : Colors.red[800],
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        deleteIcon: const Icon(Icons.close, size: 18, color: Colors.white),
+                                        onDeleted: () => _removeFault(index),
+                                        backgroundColor: (_showMaintenanceNotes || widget.isMaintenanceInspection)
+                                            ? Colors.blue[100]
+                                            : Colors.red[100],
+                                      );
+                                    }),
+                                  ),
+
+                                  // Fault count badge
+                                  const SizedBox(height: 12),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade100,
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
                                     child: Text(
-                                      "Maintenance inspection will set machine status to BLUE",
-                                      style: TextStyle(
-                                        color: Colors.blue,
+                                      "${_selectedFaults.length} ${_showMaintenanceNotes || widget.isMaintenanceInspection ? 'notes' : 'faults'} selected",
+                                      style: const TextStyle(
                                         fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.blue,
                                       ),
                                     ),
                                   ),
                                 ],
+
+                                // Info message for maintenance
+                                if (_showMaintenanceNotes || widget.isMaintenanceInspection) ...[
+                                  const SizedBox(height: 16),
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade50,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.blue.shade200),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.info,
+                                          color: Colors.blue,
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            "Maintenance inspection will set machine status to BLUE",
+                                            style: TextStyle(
+                                              color: Colors.blue.shade800,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // Next Button
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: _isSubmitting ? null : _submitForm,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: 5,
+                                shadowColor: Colors.blue.withOpacity(0.3),
+                              ),
+                              child: _isSubmitting
+                                  ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation(Colors.white),
+                                ),
+                              )
+                                  : Text(
+                                _showMaintenanceNotes || widget.isMaintenanceInspection
+                                    ? "Review Maintenance"
+                                    : "Review Inspection",
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
-                          ],
+                          ),
+
+                          const SizedBox(height: 30),
                         ],
                       ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // Next Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _submitForm,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                        (_showMaintenanceNotes ||
-                            widget.isMaintenanceInspection)
-                        ? Colors.blue[800]
-                        : Colors.blue[800],
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                  child: Text(
-                    _showMaintenanceNotes || widget.isMaintenanceInspection
-                        ? "Review Maintenance"
-                        : "Review Inspection",
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildFormSection(String title, List<Widget> children) {
+  Widget _buildCard({required Widget child}) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
+            color: Colors.blue.withOpacity(0.1),
+            blurRadius: 10,
+            spreadRadius: 2,
           ),
         ],
       ),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _buildInfoItem(String label, String value) {
+    return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.grey,
+            ),
           ),
-          const SizedBox(height: 16),
-          ...children,
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Colors.blue,
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildDropdownField(
-    String label,
-    String? value,
-    List<String> items,
-    Function(String?) onChanged,
-  ) {
+      String label,
+      String? value,
+      List<String> items,
+      Function(String?) onChanged, {
+        String? Function(String?)? validator,
+      }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       child: Column(
@@ -513,46 +785,41 @@ class _InspectionFormState extends State<InspectionForm> {
         children: [
           Text(
             label,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: Colors.blue,
+            ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           DropdownButtonFormField<String>(
             value: value,
             decoration: InputDecoration(
-              border: const OutlineInputBorder(),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
               filled: true,
-              fillColor: Colors.grey[100],
+              fillColor: Colors.grey.shade100,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
             ),
             items: items.map((String item) {
-              return DropdownMenuItem<String>(value: item, child: Text(item));
+              return DropdownMenuItem<String>(
+                value: item,
+                child: Text(
+                  item,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14),
+                ),
+              );
             }).toList(),
             onChanged: onChanged,
             isExpanded: true,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTextField(String label, TextEditingController controller) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          TextFormField(
-            controller: controller,
-            keyboardType: TextInputType.text,
-            decoration: InputDecoration(
-              border: const OutlineInputBorder(),
-              filled: true,
-              fillColor: Colors.grey[100],
-            ),
+            validator: validator,
+            style: const TextStyle(fontSize: 14, color: Colors.black),
+            icon: const Icon(Icons.arrow_drop_down, color: Colors.blue),
+            borderRadius: BorderRadius.circular(12),
+            dropdownColor: Colors.white,
           ),
         ],
       ),

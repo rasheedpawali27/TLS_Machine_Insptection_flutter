@@ -122,3 +122,34 @@ class AuthService {
     }
   }
 }
+
+
+
+/*
+// auth_service.dart
+import 'api_service.dart';
+
+class AuthService {
+  Future<bool> login(String username, String password) async {
+    try {
+      return await ApiService.login(username, password);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<void> logout() async {
+    await ApiService.logout();
+  }
+
+  bool isLoggedIn() {
+    return ApiService.isLoggedIn();
+  }
+}
+
+*/
+
+
+
+
+
