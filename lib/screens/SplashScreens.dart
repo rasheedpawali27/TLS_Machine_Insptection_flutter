@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:tls_inspection_machine/screens/Login_screen.dart';
-import 'package:tls_inspection_machine/screens/Inline_inspection_dashboard_screen.dart';
 import 'package:tls_inspection_machine/screens/machine_status_screen.dart';
 import 'package:tls_inspection_machine/services/auth_service.dart';
 

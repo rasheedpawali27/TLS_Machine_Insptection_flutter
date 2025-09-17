@@ -1,9 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:tls_inspection_machine/services/auth_service.dart';
-import 'package:tls_inspection_machine/screens/endline_dashboard.dart';
-import 'package:tls_inspection_machine/screens/round_wise_summary.dart';
-import 'package:tls_inspection_machine/screens/opration_bulletin.dart';
-import 'package:tls_inspection_machine/screens/setting.dart';
 import 'package:tls_inspection_machine/screens/inline_inspection_summary.dart';
 
 class MachineStatusController extends ChangeNotifier {
@@ -51,11 +47,11 @@ class MachineStatusController extends ChangeNotifier {
   final Map<String, DateTime> machineLastUpdated = {};
   final Map<String, List<String>> machineFaults = {};
 
-  /// ✅ New: Round-wise statuses for each machine
+  /// ✅ Round-wise statuses for each machine
   final Map<String, List<String>> machineRoundStatuses = {};
   final Map<String, int> machineCurrentRound = {};
 
-  /// ✅ New: Store round details for each machine
+  /// ✅ Store round details for each machine
   final Map<String, List<Map<String, dynamic>>> machineRoundDetails = {};
 
   int totalRed = 0;
@@ -76,31 +72,36 @@ class MachineStatusController extends ChangeNotifier {
       }
     }
 
+    // Initialize all machines with default values
     for (var line in lines) {
       final machines = lineMachines[line];
       if (machines != null) {
         for (var machine in machines) {
-          machineStatusCounts[machine] = {
-            "red": 0,
-            "yellow": 0,
-            "green": 0,
-            "blue": 0,
-          };
-          machineCurrentStatus[machine] = "green";
-          machineLastUpdated[machine] = DateTime.now();
-          machineFaults[machine] = [];
-
-          // initialize round statuses (default grey for all 4 rounds)
-          machineRoundStatuses[machine] = ["grey", "grey", "grey", "grey"];
-          machineCurrentRound[machine] = 0; // 0 means no round has been inspected yet
-
-          // initialize round details
-          machineRoundDetails[machine] = [];
+          _initializeMachine(machine);
         }
       }
     }
     calculateTotals();
     notifyListeners();
+  }
+
+  void _initializeMachine(String machineId) {
+    machineStatusCounts[machineId] = {
+      "red": 0,
+      "yellow": 0,
+      "green": 0,
+      "blue": 0,
+    };
+    machineCurrentStatus[machineId] = "green";
+    machineLastUpdated[machineId] = DateTime.now();
+    machineFaults[machineId] = [];
+
+    // initialize round statuses (default grey for all 4 rounds)
+    machineRoundStatuses[machineId] = ["grey", "grey", "grey", "grey"];
+    machineCurrentRound[machineId] = 0; // 0 means no round has been inspected yet
+
+    // initialize round details
+    machineRoundDetails[machineId] = [];
   }
 
   /// ✅ Get the current round for a machine
@@ -130,16 +131,24 @@ class MachineStatusController extends ChangeNotifier {
         'inspector': inspectorName,
       });
 
+      // Update the machine's current status based on the latest inspection
+      machineCurrentStatus[machineId] = status;
+      machineFaults[machineId] = faults;
+      machineLastUpdated[machineId] = DateTime.now();
+
+      // Update status counts
+      machineStatusCounts[machineId]![status] = (machineStatusCounts[machineId]![status] ?? 0) + 1;
+
       // If all 4 rounds are completed, reset for a new cycle
       if (nextRound == 4) {
-        // You can choose to keep the status or reset based on requirements
-        // For now, we'll keep the status but reset the round counter after a delay
+        // Reset rounds but keep the current status
         Future.delayed(const Duration(seconds: 2), () {
           resetMachineRounds(machineId);
           notifyListeners();
         });
       }
     }
+    calculateTotals();
     notifyListeners();
   }
 
@@ -203,7 +212,6 @@ class MachineStatusController extends ChangeNotifier {
     // Update the round status with empty faults for button clicks
     updateRoundStatus(selectedMachine!, newStatus, [], authService.currentUser?.fullName ?? "Unknown");
 
-    calculateTotals();
     notifyListeners();
   }
 
@@ -230,8 +238,8 @@ class MachineStatusController extends ChangeNotifier {
       updateInspectionPieces();
     } else {
       roundCount = 1;
-      notifyListeners();
     }
+    notifyListeners();
   }
 
   void incrementRound() {
@@ -306,13 +314,8 @@ class MachineStatusController extends ChangeNotifier {
         status = "red";
       }
 
-      machineCurrentStatus[selectedMachine!] = status;
-      machineLastUpdated[selectedMachine!] = DateTime.now();
-
       // Update the round status with actual faults
       updateRoundStatus(selectedMachine!, status, selectedFaults, authService.currentUser?.fullName ?? "Unknown");
-
-      calculateTotals();
     }
     closeInspectionForm();
   }
@@ -354,7 +357,6 @@ class MachineStatusController extends ChangeNotifier {
     // Update the round status
     updateRoundStatus(machineId, status, faults, authService.currentUser?.fullName ?? "Unknown");
 
-    calculateTotals();
     notifyListeners();
   }
 
@@ -376,7 +378,6 @@ class MachineStatusController extends ChangeNotifier {
     // Update the round status to green when faults are fixed
     updateRoundStatus(machineId, "green", [], authService.currentUser?.fullName ?? "Unknown");
 
-    calculateTotals();
     notifyListeners();
   }
 
@@ -399,7 +400,6 @@ class MachineStatusController extends ChangeNotifier {
     // Update the round status
     updateRoundStatus(machineId, status, machineFaults[machineId] ?? [], authService.currentUser?.fullName ?? "Unknown");
 
-    calculateTotals();
     notifyListeners();
   }
 
@@ -561,7 +561,7 @@ class MachineStatusController extends ChangeNotifier {
     );
   }
 
-  /// ✅ New: Show round details in a popup
+  /// ✅ Show round details in a popup
   void showRoundDetails(BuildContext context, String machineId, int roundNumber) {
     final roundDetails = machineRoundDetails[machineId];
     final roundDetail = roundDetails != null && roundDetails.length >= roundNumber
