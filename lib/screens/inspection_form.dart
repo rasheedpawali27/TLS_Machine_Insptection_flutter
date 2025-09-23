@@ -352,7 +352,7 @@ class _InspectionFormState extends State<InspectionForm>
   }
 
   // Get color for current status
-  Color get _statusColor {
+  /*Color get _statusColor {
     switch (_currentStatus) {
       case "Green":
         return Colors.green;
@@ -365,10 +365,10 @@ class _InspectionFormState extends State<InspectionForm>
       default:
         return Colors.grey;
     }
-  }
+  }*/
 
   // Get icon for current status
-  IconData get _statusIcon {
+  /*IconData get _statusIcon {
     switch (_currentStatus) {
       case "Green":
         return Icons.check_circle;
@@ -381,7 +381,7 @@ class _InspectionFormState extends State<InspectionForm>
       default:
         return Icons.help;
     }
-  }
+  }*/
 
   void _submitForm() async {
     if (!_formKey.currentState!.validate()) {
@@ -417,14 +417,14 @@ class _InspectionFormState extends State<InspectionForm>
     });
   }
 
-  void _toggleMaintenanceNotes() {
+  /*void _toggleMaintenanceNotes() {
     setState(() {
       _showMaintenanceNotes = !_showMaintenanceNotes;
       if (_showMaintenanceNotes) {
         _selectedFaults.clear();
       }
     });
-  }
+  }*/
 
   // Increment round counter (with max limit)
   void _incrementRound() {
@@ -1244,7 +1244,7 @@ class _InspectionFormState extends State<InspectionForm>
   }
 
   // Helper function to get icon for status
-  IconData _getStatusIcon(String status) {
+  /*IconData _getStatusIcon(String status) {
     switch (status) {
       case "Green":
         return Icons.check_circle;
@@ -1257,5 +1257,5 @@ class _InspectionFormState extends State<InspectionForm>
       default:
         return Icons.help;
     }
-  }
+  }*/
 }

@@ -1,158 +1,67 @@
-// api_service.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  static const String baseUrl = 'https://your-demo-api-url.com/api'; // Replace with your demo API URL
+  static const String baseUrl = 'https://10.12.8.245:8080/api';
 
-  // SharedPreferences instance
-  static late SharedPreferences _prefs;
-
-  // Initialize SharedPreferences
-  static Future<void> init() async {
-    _prefs = await SharedPreferences.getInstance();
-  }
-
-  // Generic GET request
-  static Future<Map<String, dynamic>> get(String endpoint, {Map<String, String>? headers}) async {
+  // Test basic connectivity
+  static Future<bool> testConnection() async {
     try {
+      print('🔍 Testing connection to: $baseUrl');
+
       final response = await http.get(
-        Uri.parse('$baseUrl/$endpoint'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${_prefs.getString('token')}',
-          ...?headers,
-        },
-      );
+        Uri.parse('$baseUrl/account/login'),
+      ).timeout(Duration(seconds: 10));
 
-      return _handleResponse(response);
+      print('📡 Response received. Status: ${response.statusCode}');
+      return true;
     } catch (e) {
-      throw Exception('Network error: $e');
+      print('❌ Connection test failed: $e');
+      return false;
     }
   }
 
-  // Generic POST request
-  static Future<Map<String, dynamic>> post(String endpoint, dynamic data, {Map<String, String>? headers}) async {
+  // Login method with detailed error handling
+  static Future<Map<String, dynamic>> login({
+    required String userNameOrEmailAddress,
+    required String password,
+    required bool rememberMe,
+    required String tenantId,
+  }) async {
     try {
+      print('🚀 Attempting login...');
+
       final response = await http.post(
-        Uri.parse('$baseUrl/$endpoint'),
+        Uri.parse('$baseUrl/account/login'),
         headers: {
+          'accept': 'text/plain',
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${_prefs.getString('token')}',
-          ...?headers,
+          'X-Requested-With': 'XMLHttpRequest',
         },
-        body: json.encode(data),
-      );
+        body: json.encode({
+          'userNameOrEmailAddress': userNameOrEmailAddress,
+          'password': password,
+          'rememberMe': rememberMe,
+          'tenantId': tenantId,
+        }),
+      ).timeout(Duration(seconds: 30));
 
-      return _handleResponse(response);
-    } catch (e) {
-      throw Exception('Network error: $e');
-    }
-  }
+      print('📊 Login response status: ${response.statusCode}');
+      print('📄 Login response body: ${response.body}');
 
-  // Generic PUT request
-  static Future<Map<String, dynamic>> put(String endpoint, dynamic data, {Map<String, String>? headers}) async {
-    try {
-      final response = await http.put(
-        Uri.parse('$baseUrl/$endpoint'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${_prefs.getString('token')}',
-          ...?headers,
-        },
-        body: json.encode(data),
-      );
-
-      return _handleResponse(response);
-    } catch (e) {
-      throw Exception('Network error: $e');
-    }
-  }
-
-  // Generic DELETE request
-  static Future<Map<String, dynamic>> delete(String endpoint, {Map<String, String>? headers}) async {
-    try {
-      final response = await http.delete(
-        Uri.parse('$baseUrl/$endpoint'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${_prefs.getString('token')}',
-          ...?headers,
-        },
-      );
-
-      return _handleResponse(response);
-    } catch (e) {
-      throw Exception('Network error: $e');
-    }
-  }
-
-  // Handle API response
-  static Map<String, dynamic> _handleResponse(http.Response response) {
-    final responseBody = json.decode(response.body);
-
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return responseBody;
-    } else {
-      throw Exception(
-          responseBody['message'] ??
-              'Request failed with status: ${response.statusCode}'
-      );
-    }
-  }
-
-  // Login method
-  static Future<bool> login(String username, String password) async {
-    try {
-      final response = await post('login', {
-        'username': username,
-        'password': password,
-      });
-
-      if (response['success'] == true) {
-        // Save token and user data
-        await _prefs.setString('token', response['data']['token']);
-        await _prefs.setString('currentUser', json.encode(response['data']['user']));
-        return true;
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['result'] == 1) {
+          return {'success': true, 'message': 'Login successful'};
+        } else {
+          return {'success': false, 'error': data['description'] ?? 'Login failed'};
+        }
       } else {
-        return false;
+        return {'success': false, 'error': 'HTTP ${response.statusCode}: ${response.body}'};
       }
     } catch (e) {
-      throw Exception('Login failed: $e');
+      print('💥 Login error: $e');
+      return {'success': false, 'error': 'Network error: $e'};
     }
-  }
-
-  // Logout method
-  static Future<void> logout() async {
-    try {
-      // Call logout API if needed
-      await post('logout', {});
-    } catch (e) {
-      // Even if API call fails, clear local data
-    } finally {
-      // Clear stored data
-      await _prefs.remove('token');
-      await _prefs.remove('currentUser');
-    }
-  }
-
-  // Check if user is logged in
-  static bool isLoggedIn() {
-    return _prefs.containsKey('token');
-  }
-
-  // Get current user data
-  static Map<String, dynamic>? getCurrentUser() {
-    final userString = _prefs.getString('currentUser');
-    if (userString != null) {
-      return json.decode(userString);
-    }
-    return null;
-  }
-
-  // Get auth token
-  static String? getToken() {
-    return _prefs.getString('token');
   }
 }

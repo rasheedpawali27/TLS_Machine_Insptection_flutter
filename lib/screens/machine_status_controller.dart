@@ -64,12 +64,18 @@ class MachineStatusController extends ChangeNotifier {
   bool showInspectionForm = false;
 
   void initState() {
+    // Check if user is logged in and set the assigned line
     if (authService.currentUser != null) {
       selectedLine = authService.currentUser!.assignedLine;
       if (selectedLine != null && machines.isNotEmpty) {
         selectedMachine = machines.first;
         updateInspectionPieces();
       }
+    } else {
+      // Default to first line if no user is logged in
+      selectedLine = lines.first;
+      selectedMachine = machines.isNotEmpty ? machines.first : null;
+      updateInspectionPieces();
     }
 
     // Initialize all machines with default values
@@ -209,8 +215,11 @@ class MachineStatusController extends ChangeNotifier {
       showInspectionForm = true;
     }
 
+    // Get inspector name from auth service or use default
+    String inspectorName = authService.currentUser?.fullName ?? "Unknown Inspector";
+
     // Update the round status with empty faults for button clicks
-    updateRoundStatus(selectedMachine!, newStatus, [], authService.currentUser?.fullName ?? "Unknown");
+    updateRoundStatus(selectedMachine!, newStatus, [], inspectorName);
 
     notifyListeners();
   }
@@ -314,8 +323,11 @@ class MachineStatusController extends ChangeNotifier {
         status = "red";
       }
 
+      // Get inspector name from auth service
+      String inspectorName = authService.currentUser?.fullName ?? "Unknown Inspector";
+
       // Update the round status with actual faults
-      updateRoundStatus(selectedMachine!, status, selectedFaults, authService.currentUser?.fullName ?? "Unknown");
+      updateRoundStatus(selectedMachine!, status, selectedFaults, inspectorName);
     }
     closeInspectionForm();
   }
@@ -354,8 +366,11 @@ class MachineStatusController extends ChangeNotifier {
     machineCurrentStatus[machineId] = status;
     machineLastUpdated[machineId] = DateTime.now();
 
+    // Get inspector name from auth service
+    String inspectorName = authService.currentUser?.fullName ?? "Unknown Inspector";
+
     // Update the round status
-    updateRoundStatus(machineId, status, faults, authService.currentUser?.fullName ?? "Unknown");
+    updateRoundStatus(machineId, status, faults, inspectorName);
 
     notifyListeners();
   }
@@ -375,8 +390,11 @@ class MachineStatusController extends ChangeNotifier {
     machineCurrentStatus[machineId] = "green";
     machineLastUpdated[machineId] = DateTime.now();
 
+    // Get inspector name from auth service
+    String inspectorName = authService.currentUser?.fullName ?? "Unknown Inspector";
+
     // Update the round status to green when faults are fixed
-    updateRoundStatus(machineId, "green", [], authService.currentUser?.fullName ?? "Unknown");
+    updateRoundStatus(machineId, "green", [], inspectorName);
 
     notifyListeners();
   }
@@ -397,8 +415,11 @@ class MachineStatusController extends ChangeNotifier {
     machineCurrentStatus[machineId] = status;
     machineLastUpdated[machineId] = DateTime.now();
 
+    // Get inspector name from auth service
+    String inspectorName = authService.currentUser?.fullName ?? "Unknown Inspector";
+
     // Update the round status
-    updateRoundStatus(machineId, status, machineFaults[machineId] ?? [], authService.currentUser?.fullName ?? "Unknown");
+    updateRoundStatus(machineId, status, machineFaults[machineId] ?? [], inspectorName);
 
     notifyListeners();
   }

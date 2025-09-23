@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:tls_inspection_machine/screens/Login_screen.dart';
+import 'package:tls_inspection_machine/screens/login_screen.dart';
 import 'package:tls_inspection_machine/screens/machine_status_screen.dart';
 import 'package:tls_inspection_machine/services/auth_service.dart';
 
@@ -20,9 +20,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _initializeApp() async {
-    // Initialize auth service and check for auto-login
-    await _authService.autoLogin();
-
+    await _authService.isLoggedIn();
     await Future.delayed(const Duration(seconds: 2));
 
     if (mounted) {
@@ -37,6 +35,7 @@ class _SplashScreenState extends State<SplashScreen> {
       }
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
