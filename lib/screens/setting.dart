@@ -1,3 +1,4 @@
+/*
 import 'package:flutter/material.dart';
 import 'package:tls_inspection_machine/services/auth_service.dart';
 
@@ -543,7 +544,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
-              await _authService.logout();
+          //    await _authService.logout();
               Navigator.of(context).pushReplacementNamed('/login');
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade300),
@@ -553,4 +554,4 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-}
+}*/

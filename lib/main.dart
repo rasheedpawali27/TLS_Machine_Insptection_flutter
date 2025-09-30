@@ -1,60 +1,76 @@
 import 'package:flutter/material.dart';
 import 'package:tls_inspection_machine/screens/login_screen.dart';
-import 'package:tls_inspection_machine/screens/login_screen.dart';
-import 'package:tls_inspection_machine/services/api_service.dart' hide ApiService;
+import 'package:tls_inspection_machine/screens/demo.dart';
+import 'package:tls_inspection_machine/screens/machine_status_screen.dart';
+import 'package:tls_inspection_machine/services/auth_service.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(MyApp());
+
+  runApp(const MyApp());
 }
 
-class MyApp extends StatefulWidget {
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   @override
-  State<MyApp> createState() => _MyAppState();
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'TLS Inspection Machine',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        useMaterial3: true,
+      ),
+      home: const AppWrapper(),
+      debugShowCheckedModeBanner: false,
+    );
+  }
 }
 
-class _MyAppState extends State<MyApp> {
-  bool _isInitialized = false;
+class AppWrapper extends StatefulWidget {
+  const AppWrapper({super.key});
+
+  @override
+  State<AppWrapper> createState() => _AppWrapperState();
+}
+
+class _AppWrapperState extends State<AppWrapper> {
+  bool _isCheckingAuth = true;
+  bool _isLoggedIn = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeApp();
+    _checkAuthentication();
   }
 
-  Future<void> _initializeApp() async {
-    await ApiService.init();
+  Future<void> _checkAuthentication() async {
+    final authService = AuthService();
+    final loggedIn = await authService.isLoggedIn();
+
     setState(() {
-      _isInitialized = true;
+      _isLoggedIn = loggedIn;
+      _isCheckingAuth = false;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_isInitialized) {
-      return MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 20),
-                Text('Initializing...'),
-              ],
-            ),
+    if (_isCheckingAuth) {
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 20),
+              Text('Checking authentication...'),
+            ],
           ),
         ),
       );
     }
 
-    return MaterialApp(
-      title: 'TLS Inspection Machine',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
-      home: LoginScreen(),
-      debugShowCheckedModeBanner: false,
-    );
+    return _isLoggedIn ? const MachineStatusScreen() : const LoginScreen();
   }
 }

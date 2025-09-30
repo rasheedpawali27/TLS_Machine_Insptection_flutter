@@ -1,57 +1,60 @@
 import 'package:flutter/material.dart';
 import 'package:tls_inspection_machine/services/auth_service.dart';
+import 'package:tls_inspection_machine/services/api_service.dart';
 import 'package:tls_inspection_machine/screens/inline_inspection_summary.dart';
 
 class MachineStatusController extends ChangeNotifier {
-  final List<String> lines = [
-    "Line 1", "Line 2", "Line 3", "Line 4", "Line 5", "Line 6", "Line 7",
-    "Line 8", "Line 9", "Line 10", "Line 11", "Line 12", "Line 13",
-  ];
+  // ✅ DATABASE-BASED LINES & MACHINES
+  List<Map<String, dynamic>> _availableLines = [];
+  List<Map<String, dynamic>> _availableStations = [];
+  List<Map<String, dynamic>> _availableMachines = [];
 
   String? selectedLine;
   String inspectionType = "Auto";
-  int roundCount = 0;
+  int roundCount = 1;
   int inspectionPieces = 5;
   final AuthService authService = AuthService();
 
-  final Map<String, List<String>> lineMachines = {
-    "Line 1": List.generate(10, (index) => "M-${101 + index}"),
-    "Line 2": List.generate(10, (index) => "M-${201 + index}"),
-    "Line 3": List.generate(10, (index) => "M-${301 + index}"),
-    "Line 4": List.generate(10, (index) => "M-${401 + index}"),
-    "Line 5": List.generate(10, (index) => "M-${501 + index}"),
-    "Line 6": List.generate(10, (index) => "M-${601 + index}"),
-    "Line 7": List.generate(10, (index) => "M-${701 + index}"),
-    "Line 8": List.generate(10, (index) => "M-${801 + index}"),
-    "Line 9": List.generate(10, (index) => "M-${901 + index}"),
-    "Line 10": List.generate(10, (index) => "M-${1001 + index}"),
-    "Line 11": List.generate(10, (index) => "M-${1101 + index}"),
-    "Line 12": List.generate(10, (index) => "M-${1201 + index}"),
-    "Line 13": List.generate(10, (index) => "M-${1301 + index}"),
-  };
+  // ✅ GETTERS FOR DATABASE DATA
+  List<Map<String, dynamic>> get availableLines => _availableLines;
+  List<String> get lineNames => _availableLines.map((line) => line['Line_Code']?.toString() ?? '').toList();
 
-  final Map<String, bool> machineCTQStatus = {
-    "M-101": true, "M-102": false, "M-103": true, "M-104": false, "M-105": true,
-    "M-106": false, "M-107": true, "M-108": false, "M-109": true, "M-110": false,
-    "M-201": false, "M-202": true, "M-203": false, "M-204": true, "M-205": false,
-    "M-206": true, "M-207": false, "M-208": true, "M-209": false, "M-210": true,
-  };
+  List<Map<String, dynamic>> get availableStations => _availableStations;
+  List<Map<String, dynamic>> get availableMachines => _availableMachines;
 
-  List<String> get machines => selectedLine != null ? lineMachines[selectedLine!] ?? [] : [];
+  // ✅ GET MACHINES FOR SELECTED LINE - FIXED VERSION
+  List<String> get machines {
+    if (selectedLine == null) return [];
+
+    print('🔍 Getting machines for selected line: $selectedLine');
+    print('🔍 Available machines count: ${_availableMachines.length}');
+
+    // ✅ RETURN ALL MACHINE CODES
+    final machineCodes = _availableMachines
+        .map((machine) => machine['Machine_Code']?.toString() ?? '')
+        .where((code) => code.isNotEmpty)
+        .toList();
+
+    print('✅ Found ${machineCodes.length} machines for line $selectedLine');
+    print('✅ Machines: $machineCodes');
+
+    return machineCodes;
+  }
 
   String? selectedMachine;
   int currentView = 0;
 
+  // Machine status tracking
   final Map<String, Map<String, int>> machineStatusCounts = {};
   final Map<String, String> machineCurrentStatus = {};
   final Map<String, DateTime> machineLastUpdated = {};
   final Map<String, List<String>> machineFaults = {};
 
-  /// ✅ Round-wise statuses for each machine
+  // Round-wise statuses for each machine
   final Map<String, List<String>> machineRoundStatuses = {};
   final Map<String, int> machineCurrentRound = {};
 
-  /// ✅ Store round details for each machine
+  // Store round details for each machine
   final Map<String, List<Map<String, dynamic>>> machineRoundDetails = {};
 
   int totalRed = 0;
@@ -62,33 +65,285 @@ class MachineStatusController extends ChangeNotifier {
   int totalNotUpdated = 0;
 
   bool showInspectionForm = false;
+  bool _isLoading = false;
 
-  void initState() {
-    // Check if user is logged in and set the assigned line
-    if (authService.currentUser != null) {
-      selectedLine = authService.currentUser!.assignedLine;
-      if (selectedLine != null && machines.isNotEmpty) {
-        selectedMachine = machines.first;
-        updateInspectionPieces();
-      }
-    } else {
-      // Default to first line if no user is logged in
-      selectedLine = lines.first;
-      selectedMachine = machines.isNotEmpty ? machines.first : null;
-      updateInspectionPieces();
-    }
-
-    // Initialize all machines with default values
-    for (var line in lines) {
-      final machines = lineMachines[line];
-      if (machines != null) {
-        for (var machine in machines) {
-          _initializeMachine(machine);
-        }
-      }
-    }
-    calculateTotals();
+  // ✅ INITIALIZE WITH DATABASE DATA
+  Future<void> initState() async {
+    _isLoading = true;
     notifyListeners();
+
+    try {
+      // ✅ LOAD USER LINES FROM DATABASE
+      await _loadUserLines();
+
+      // ✅ LOAD STATIONS/MACHINES FOR SELECTED LINE
+      if (selectedLine != null) {
+        await _loadLineStations();
+      }
+
+      // ✅ INITIALIZE MACHINES WITH DEFAULT VALUES
+      _initializeAllMachines();
+
+      calculateTotals();
+
+    } catch (e) {
+      print('❌ Error initializing controller: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // ✅ LOAD USER-SPECIFIC OR ALL LINES FROM DATABASE
+  Future<void> _loadUserLines() async {
+    try {
+      if (authService.currentUser != null) {
+        // Use lines from auth service (already fetched during login)
+        _availableLines = authService.getAvailableLines();
+
+        // Set selected line based on user's assigned line or first available
+        if (_availableLines.isNotEmpty) {
+          selectedLine = authService.firstAssignedLine ?? _availableLines.first['Line_Code']?.toString();
+          print('✅ Loaded ${_availableLines.length} lines for user');
+          print('✅ Selected line: $selectedLine');
+          print('✅ Available lines: $_availableLines');
+        } else {
+          print('⚠️ No lines available for user, using fallback');
+          _useTemporaryLines();
+        }
+      } else {
+        print('⚠️ No user logged in, using temporary data');
+        _useTemporaryLines();
+      }
+    } catch (e) {
+      print('❌ Error loading user lines: $e');
+      _useTemporaryLines();
+    }
+  }
+
+  // ✅ LOAD LINE-SPECIFIC STATIONS/MACHINES FROM DATABASE - UPDATED FOR ACTUAL API RESPONSE
+  Future<void> _loadLineStations() async {
+    if (selectedLine == null) {
+      print('❌ No line selected, cannot load stations');
+      return;
+    }
+
+    try {
+      print('🔍 Loading stations for line: $selectedLine');
+
+      // Find selected line ID
+      final selectedLineData = _availableLines.firstWhere(
+            (line) => line['Line_Code'] == selectedLine,
+        orElse: () => {},
+      );
+
+      if (selectedLineData.isNotEmpty && selectedLineData['Line_ID'] != null) {
+        final lineId = selectedLineData['Line_ID'];
+        final currentDate = ApiService.getCurrentDate();
+
+        print('🔗 Fetching stations for Line_ID: $lineId, Date: $currentDate');
+
+        try {
+          // ✅ CONVERT lineId TO INT
+          int lineIdInt;
+          if (lineId is int) {
+            lineIdInt = lineId;
+          } else if (lineId is String) {
+            lineIdInt = int.tryParse(lineId) ?? 0;
+          } else {
+            lineIdInt = 0;
+          }
+
+          if (lineIdInt > 0) {
+            // ✅ CALL API TO GET STATIONS/MACHINES
+            _availableStations = await ApiService.getLineStations(lineIdInt, currentDate);
+            print('✅ Stations fetched from API: ${_availableStations.length}');
+
+            if (_availableStations.isNotEmpty) {
+              print('🔍 First station data: ${_availableStations.first}');
+
+              // ✅ EXTRACT MACHINES FROM STATIONS - UPDATED FOR ACTUAL API FORMAT
+              _availableMachines = _extractMachinesFromStations(_availableStations);
+              print('✅ Machines extracted: ${_availableMachines.length}');
+
+              if (_availableMachines.isEmpty) {
+                print('⚠️ No machines extracted, creating from WorkStation data');
+                _createMachinesFromWorkStations();
+              }
+            } else {
+              print('⚠️ No stations returned from API, using temporary data');
+              _useTemporaryStations();
+            }
+          } else {
+            print('❌ Invalid Line_ID, using temporary data');
+            _useTemporaryStations();
+          }
+        } catch (e) {
+          print('❌ API Error: $e');
+          print('🔄 Using temporary data as fallback');
+          _useTemporaryStations();
+        }
+      } else {
+        print('❌ Could not find Line_ID for selected line: $selectedLine');
+        _useTemporaryStations();
+      }
+    } catch (e) {
+      print('❌ Error loading line stations: $e');
+      _useTemporaryStations();
+    }
+
+    // Set first machine as selected
+    if (_availableMachines.isNotEmpty) {
+      selectedMachine = _availableMachines.first['Machine_Code']?.toString();
+      updateInspectionPieces();
+      print('✅ Selected machine: $selectedMachine');
+    } else {
+      print('⚠️ No machines available for selected line');
+      selectedMachine = null;
+    }
+  }
+
+  // ✅ EXTRACT MACHINES FROM STATIONS DATA - UPDATED FOR ACTUAL API FORMAT
+  List<Map<String, dynamic>> _extractMachinesFromStations(List<Map<String, dynamic>> stations) {
+    final machines = <Map<String, dynamic>>[];
+
+    for (var station in stations) {
+      // ✅ CHECK BOTH Machine_Code AND WorkStation_Code
+      String? machineCode;
+      String? machineDesc;
+
+      // First try to get Machine_Code
+      if (station['Machine_Code'] != null && station['Machine_Code'].toString().isNotEmpty) {
+        machineCode = station['Machine_Code'].toString();
+        machineDesc = station['Machine_Desc']?.toString() ?? machineCode;
+      }
+      // If no Machine_Code, try WorkStation_Code (from your API response)
+      else if (station['WorkStation_Code'] != null && station['WorkStation_Code'].toString().isNotEmpty) {
+        machineCode = station['WorkStation_Code'].toString();
+        machineDesc = station['WorkStation_Desc']?.toString() ?? machineCode;
+      }
+
+      if (machineCode != null && machineCode.isNotEmpty) {
+        machines.add({
+          'Machine_ID': station['Machine_ID'] ?? station['WorkStation_ID'] ?? 0,
+          'Machine_Code': machineCode,
+          'Machine_Desc': machineDesc ?? machineCode,
+          'WorkStation_ID': station['WorkStation_ID'],
+          'WorkStation_Code': station['WorkStation_Code'],
+          'Line_Code': selectedLine,
+        });
+        print('✅ Added machine: $machineCode');
+      }
+    }
+
+    return machines;
+  }
+
+  // ✅ CREATE MACHINES FROM WORKSTATION DATA (when no separate machine data)
+  void _createMachinesFromWorkStations() {
+    print('🔄 Creating machines from WorkStation data...');
+
+    for (var station in _availableStations) {
+      if (station['WorkStation_Code'] != null && station['WorkStation_Code'].toString().isNotEmpty) {
+        final workstationCode = station['WorkStation_Code'].toString();
+        final workstationDesc = station['WorkStation_Desc']?.toString() ?? workstationCode;
+
+        _availableMachines.add({
+          'Machine_ID': station['WorkStation_ID'] ?? 0,
+          'Machine_Code': workstationCode,
+          'Machine_Desc': workstationDesc,
+          'WorkStation_ID': station['WorkStation_ID'],
+          'WorkStation_Code': workstationCode,
+          'Line_Code': selectedLine,
+        });
+        print('✅ Created machine from workstation: $workstationCode');
+      }
+    }
+
+    print('✅ Created ${_availableMachines.length} machines from workstations');
+  }
+
+  // ✅ TEMPORARY LINES DATA
+  void _useTemporaryLines() {
+    print('🔄 Using temporary lines data...');
+
+    _availableLines = [
+      {
+        'Line_ID': 1,
+        'Line_Code': 'Line 1',
+        'Line_Desc': 'Production Line 1',
+      },
+      {
+        'Line_ID': 2,
+        'Line_Code': 'Line 2',
+        'Line_Desc': 'Production Line 2',
+      },
+      {
+        'Line_ID': 3,
+        'Line_Code': 'Line 3',
+        'Line_Desc': 'Production Line 3',
+      },
+    ];
+
+    selectedLine = _availableLines.first['Line_Code']?.toString();
+    print('✅ Temporary lines loaded: ${_availableLines.length}');
+  }
+
+  // ✅ TEMPORARY STATIONS/MACHINES DATA
+  void _useTemporaryStations() {
+    print('🔄 Using temporary stations data...');
+
+    _availableStations = [
+      {
+        'WorkStation_ID': 1,
+        'WorkStation_Code': 'M-101',
+        'WorkStation_Desc': 'Machine 101',
+      },
+      {
+        'WorkStation_ID': 2,
+        'WorkStation_Code': 'M-102',
+        'WorkStation_Desc': 'Machine 102',
+      },
+      {
+        'WorkStation_ID': 3,
+        'WorkStation_Code': 'M-103',
+        'WorkStation_Desc': 'Machine 103',
+      },
+      {
+        'WorkStation_ID': 4,
+        'WorkStation_Code': 'M-104',
+        'WorkStation_Desc': 'Machine 104',
+      },
+      {
+        'WorkStation_ID': 5,
+        'WorkStation_Code': 'M-105',
+        'WorkStation_Desc': 'Machine 105',
+      },
+      {
+        'WorkStation_ID': 6,
+        'WorkStation_Code': 'M-106',
+        'WorkStation_Desc': 'Machine 106',
+      },
+    ];
+
+    _createMachinesFromWorkStations();
+    print('✅ Temporary stations loaded: ${_availableStations.length}');
+    print('✅ Temporary machines loaded: ${_availableMachines.length}');
+  }
+
+  // ✅ INITIALIZE MACHINES WITH DATABASE DATA
+  void _initializeAllMachines() {
+    print('🔄 Initializing machines...');
+    print('🔍 Available machines count: ${_availableMachines.length}');
+
+    for (var machine in _availableMachines) {
+      final machineCode = machine['Machine_Code']?.toString();
+      if (machineCode != null && machineCode.isNotEmpty) {
+        _initializeMachine(machineCode);
+        print('✅ Initialized machine: $machineCode');
+      }
+    }
+    print('✅ Total initialized machines: ${machineCurrentStatus.length}');
   }
 
   void _initializeMachine(String machineId) {
@@ -104,24 +359,86 @@ class MachineStatusController extends ChangeNotifier {
 
     // initialize round statuses (default grey for all 4 rounds)
     machineRoundStatuses[machineId] = ["grey", "grey", "grey", "grey"];
-    machineCurrentRound[machineId] = 0; // 0 means no round has been inspected yet
+    machineCurrentRound[machineId] = 0;
 
     // initialize round details
     machineRoundDetails[machineId] = [];
   }
 
-  /// ✅ Get the current round for a machine
+  // ✅ GET MACHINE CTQ STATUS
+  bool isMachineCTQ(String machineId) {
+    // Simple logic based on machine code - adjust as needed
+    return machineId.contains('101') ||
+        machineId.contains('103') ||
+        machineId.contains('105') ||
+        machineId.contains('107') ||
+        machineId.contains('109');
+  }
+
+  // ✅ UPDATE INSPECTION PIECES BASED ON CTQ STATUS
+  void updateInspectionPieces() {
+    if (selectedMachine != null) {
+      final isCTQ = isMachineCTQ(selectedMachine!);
+      inspectionPieces = isCTQ ? 10 : 5;
+      print('🔍 Updated inspection pieces: $inspectionPieces (CTQ: $isCTQ)');
+      notifyListeners();
+    }
+  }
+
+  // ✅ SELECT LINE AND LOAD ITS STATIONS
+  void selectLine(String? line) async {
+    if (line == null) return;
+
+    selectedLine = line;
+    selectedMachine = null;
+    _availableStations = [];
+    _availableMachines = [];
+
+    print('🔄 Selecting line: $selectedLine');
+
+    // Load stations for the selected line
+    await _loadLineStations();
+
+    // Set first machine as selected
+    if (_availableMachines.isNotEmpty) {
+      selectedMachine = _availableMachines.first['Machine_Code']?.toString();
+      updateInspectionPieces();
+      print('✅ Selected machine: $selectedMachine');
+    } else {
+      print('⚠️ No machines available for selected line');
+    }
+
+    notifyListeners();
+  }
+
+  // ✅ SELECT MACHINE
+  void selectMachine(String machineId) {
+    selectedMachine = machineId;
+    updateInspectionPieces();
+    print('✅ Machine selected: $machineId');
+    notifyListeners();
+  }
+
+  // ✅ GET MACHINE DATA BY CODE
+  Map<String, dynamic>? getMachineData(String machineCode) {
+    return _availableMachines.firstWhere(
+          (machine) => machine['Machine_Code'] == machineCode,
+      orElse: () => {},
+    );
+  }
+
+  // ✅ GET CURRENT ROUND FOR A MACHINE
   int getCurrentRound(String machineId) {
     return machineCurrentRound[machineId] ?? 0;
   }
 
-  /// ✅ Get the next round for a machine
+  // ✅ GET NEXT ROUND FOR A MACHINE
   int getNextRound(String machineId) {
     int currentRound = getCurrentRound(machineId);
     return currentRound < 4 ? currentRound + 1 : 4;
   }
 
-  /// ✅ Update round status after inspection
+  // ✅ UPDATE ROUND STATUS AFTER INSPECTION
   void updateRoundStatus(String machineId, String status, List<String> faults, String inspectorName) {
     int nextRound = getNextRound(machineId);
     if (nextRound <= 4) {
@@ -147,7 +464,6 @@ class MachineStatusController extends ChangeNotifier {
 
       // If all 4 rounds are completed, reset for a new cycle
       if (nextRound == 4) {
-        // Reset rounds but keep the current status
         Future.delayed(const Duration(seconds: 2), () {
           resetMachineRounds(machineId);
           notifyListeners();
@@ -158,7 +474,7 @@ class MachineStatusController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// ✅ Reset all rounds for a machine
+  // ✅ RESET ALL ROUNDS FOR A MACHINE
   void resetMachineRounds(String machineId) {
     machineRoundStatuses[machineId] = ["grey", "grey", "grey", "grey"];
     machineCurrentRound[machineId] = 0;
@@ -194,14 +510,6 @@ class MachineStatusController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateInspectionPieces() {
-    if (selectedMachine != null) {
-      final isCTQ = machineCTQStatus[selectedMachine!] ?? false;
-      inspectionPieces = isCTQ ? 10 : 5;
-      notifyListeners();
-    }
-  }
-
   void updateStatus(String newStatus) {
     if (selectedMachine == null) return;
 
@@ -215,29 +523,9 @@ class MachineStatusController extends ChangeNotifier {
       showInspectionForm = true;
     }
 
-    // Get inspector name from auth service or use default
-    String inspectorName = authService.currentUser?.fullName ?? "Unknown Inspector";
-
-    // Update the round status with empty faults for button clicks
+    String inspectorName = authService.fullName ?? "Unknown Inspector";
     updateRoundStatus(selectedMachine!, newStatus, [], inspectorName);
 
-    notifyListeners();
-  }
-
-  void selectMachine(String machineId) {
-    selectedMachine = machineId;
-    updateInspectionPieces();
-    notifyListeners();
-  }
-
-  void selectLine(String? line) {
-    selectedLine = line;
-    if (selectedLine != null && machines.isNotEmpty) {
-      selectedMachine = machines.first;
-      updateInspectionPieces();
-    } else {
-      selectedMachine = null;
-    }
     notifyListeners();
   }
 
@@ -297,10 +585,6 @@ class MachineStatusController extends ChangeNotifier {
     }
   }
 
-  bool isMachineCTQ(String machineId) {
-    return machineCTQStatus[machineId] ?? false;
-  }
-
   void switchView() {
     currentView = currentView == 0 ? 1 : 0;
     notifyListeners();
@@ -323,16 +607,15 @@ class MachineStatusController extends ChangeNotifier {
         status = "red";
       }
 
-      // Get inspector name from auth service
-      String inspectorName = authService.currentUser?.fullName ?? "Unknown Inspector";
-
-      // Update the round status with actual faults
+      String inspectorName = authService.fullName ?? "Unknown Inspector";
       updateRoundStatus(selectedMachine!, status, selectedFaults, inspectorName);
     }
     closeInspectionForm();
   }
 
   void openInspectionSummary(BuildContext context, Map<String, dynamic> formData) {
+    if (selectedMachine == null) return;
+
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -366,10 +649,7 @@ class MachineStatusController extends ChangeNotifier {
     machineCurrentStatus[machineId] = status;
     machineLastUpdated[machineId] = DateTime.now();
 
-    // Get inspector name from auth service
-    String inspectorName = authService.currentUser?.fullName ?? "Unknown Inspector";
-
-    // Update the round status
+    String inspectorName = authService.fullName ?? "Unknown Inspector";
     updateRoundStatus(machineId, status, faults, inspectorName);
 
     notifyListeners();
@@ -390,10 +670,7 @@ class MachineStatusController extends ChangeNotifier {
     machineCurrentStatus[machineId] = "green";
     machineLastUpdated[machineId] = DateTime.now();
 
-    // Get inspector name from auth service
-    String inspectorName = authService.currentUser?.fullName ?? "Unknown Inspector";
-
-    // Update the round status to green when faults are fixed
+    String inspectorName = authService.fullName ?? "Unknown Inspector";
     updateRoundStatus(machineId, "green", [], inspectorName);
 
     notifyListeners();
@@ -415,10 +692,7 @@ class MachineStatusController extends ChangeNotifier {
     machineCurrentStatus[machineId] = status;
     machineLastUpdated[machineId] = DateTime.now();
 
-    // Get inspector name from auth service
-    String inspectorName = authService.currentUser?.fullName ?? "Unknown Inspector";
-
-    // Update the round status
+    String inspectorName = authService.fullName ?? "Unknown Inspector";
     updateRoundStatus(machineId, status, machineFaults[machineId] ?? [], inspectorName);
 
     notifyListeners();
@@ -497,14 +771,14 @@ class MachineStatusController extends ChangeNotifier {
                   for (int i = 0; i < 4; i++)
                     GestureDetector(
                       onTap: () {
-                        Navigator.pop(context); // Close current dialog
+                        Navigator.pop(context);
                         showRoundDetails(context, machineId, i + 1);
                       },
                       child: Card(
                         elevation: 3,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
-                          side: BorderSide(color: Colors.black),
+                          side: const BorderSide(color: Colors.black),
                         ),
                         color: _getStatusColor(roundStatuses[i]),
                         child: Container(
@@ -582,7 +856,6 @@ class MachineStatusController extends ChangeNotifier {
     );
   }
 
-  /// ✅ Show round details in a popup
   void showRoundDetails(BuildContext context, String machineId, int roundNumber) {
     final roundDetails = machineRoundDetails[machineId];
     final roundDetail = roundDetails != null && roundDetails.length >= roundNumber
@@ -688,7 +961,6 @@ class MachineStatusController extends ChangeNotifier {
     );
   }
 
-  /// ✅ Add this method to open inspection form directly
   void openInspectionFormDirectly(String machineId) {
     selectedMachine = machineId;
     updateInspectionPieces();
@@ -710,4 +982,7 @@ class MachineStatusController extends ChangeNotifier {
         return Colors.grey;
     }
   }
+
+  // ✅ LOADING STATE
+  bool get isLoading => _isLoading;
 }

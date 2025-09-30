@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:tls_inspection_machine/screens/demo.dart';
+import 'package:tls_inspection_machine/screens/machine_status_screen.dart';
 import 'package:tls_inspection_machine/services/auth_service.dart';
-import 'package:tls_inspection_machine/services/api_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -16,9 +15,11 @@ class _LoginScreenState extends State<LoginScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final AuthService _authService = AuthService();
+
   bool _isLoading = false;
   bool _rememberMe = true;
   bool _isInitializing = true;
+  String? _loginStatus;
 
   @override
   void initState() {
@@ -44,18 +45,22 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _checkAutoLogin() async {
     final isLoggedIn = await _authService.isLoggedIn();
     if (isLoggedIn) {
+      // ✅ Load user data from storage
+      await _authService.loadUserData();
+
       final username = await _authService.getCurrentUsername();
       if (username != null) {
         _usernameController.text = username;
-        // Optional: Auto login if remember me is enabled
-        // _login();
       }
+
+      // ✅ Auto navigate if already logged in
+      _navigateToHome();
     }
   }
 
   void _navigateToHome() {
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (context) => const Demo()),
+      MaterialPageRoute(builder: (context) => const MachineStatusScreen()),
     );
   }
 
@@ -64,7 +69,14 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_isInitializing) {
       return const Scaffold(
         body: Center(
-          child: CircularProgressIndicator(),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 20),
+              Text('Initializing...'),
+            ],
+          ),
         ),
       );
     }
@@ -88,12 +100,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Image.asset("assets/images/login.png", width: 250),
-                      const SizedBox(height: 10),
+                      Image.asset("assets/images/login.png", width: 200),
+                      const SizedBox(height: 20),
                       const Text(
                         'DENIM',
                         style: TextStyle(
-                          fontSize: 24,
+                          fontSize: 26,
                           fontWeight: FontWeight.bold,
                           color: Colors.blue,
                         ),
@@ -101,27 +113,69 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 10),
                       const Text(
                         'Please sign in to continue',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey,
-                        ),
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
                       ),
                       const SizedBox(height: 30),
+
+                      // ✅ Login Status Display
+                      if (_loginStatus != null)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: _loginStatus!.contains('✅')
+                                ? Colors.green[50]
+                                : Colors.red[50],
+                            border: Border.all(
+                              color: _loginStatus!.contains('✅')
+                                  ? Colors.green
+                                  : Colors.red,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                _loginStatus!.contains('✅')
+                                    ? Icons.check_circle
+                                    : Icons.error,
+                                color: _loginStatus!.contains('✅')
+                                    ? Colors.green
+                                    : Colors.red,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  _loginStatus!,
+                                  style: TextStyle(
+                                    color: _loginStatus!.contains('✅')
+                                        ? Colors.green
+                                        : Colors.red,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                      // Username
                       TextFormField(
                         controller: _usernameController,
                         decoration: const InputDecoration(
-                          labelText: 'Username or Email',
+                          labelText: 'Username',
                           prefixIcon: Icon(Icons.person),
                           border: OutlineInputBorder(),
+                          hintText: 'Enter your username',
                         ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter your username or email';
-                          }
-                          return null;
-                        },
+                        validator: (value) =>
+                        value == null || value.isEmpty
+                            ? 'Please enter your username'
+                            : null,
                       ),
                       const SizedBox(height: 20),
+
+                      // Password
                       TextFormField(
                         controller: _passwordController,
                         obscureText: true,
@@ -129,18 +183,16 @@ class _LoginScreenState extends State<LoginScreen> {
                           labelText: 'Password',
                           prefixIcon: Icon(Icons.lock),
                           border: OutlineInputBorder(),
+                          hintText: 'Enter your password',
                         ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter your password';
-                          }
-                          if (value.length < 6) {
-                            return 'Password must be at least 6 characters';
-                          }
-                          return null;
-                        },
+                        validator: (value) =>
+                        value == null || value.isEmpty
+                            ? 'Please enter your password'
+                            : null,
                       ),
                       const SizedBox(height: 20),
+
+                      // Remember Me
                       Row(
                         children: [
                           Checkbox(
@@ -149,20 +201,38 @@ class _LoginScreenState extends State<LoginScreen> {
                               setState(() {
                                 _rememberMe = value ?? false;
                               });
+                              _saveRememberMePreference(value ?? false);
                             },
                           ),
                           const Text('Remember me'),
+                          const Spacer(),
+                          // Forgot Password
+                          TextButton(
+                            onPressed: () {
+                              _showForgotPasswordDialog();
+                            },
+                            child: const Text('Forgot Password?'),
+                          ),
                         ],
                       ),
+
                       const SizedBox(height: 10),
+
+                      // Login Button
                       _isLoading
-                          ? const CircularProgressIndicator()
+                          ? const Column(
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 10),
+                          Text('Authenticating...'),
+                        ],
+                      )
                           : SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
                           onPressed: _login,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
+                            backgroundColor: Colors.blue[800],
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
@@ -178,8 +248,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                       ),
+
                       const SizedBox(height: 20),
-                      // Demo credentials hint
+
+                      // Database Connection Status
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -190,7 +262,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              'Demo Credentials:',
+                              'System Information:',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 color: Colors.grey,
@@ -198,12 +270,16 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Username: 280770',
-                              style: TextStyle(color: Colors.grey[600]),
+                              'Database: ILDQMS',
+                              style: TextStyle(color: Colors.grey[700]),
                             ),
                             Text(
-                              'Password: Habib@123',
-                              style: TextStyle(color: Colors.grey[600]),
+                              'Authentication: Active',
+                              style: TextStyle(color: Colors.grey[700]),
+                            ),
+                            Text(
+                              'Lines: Dynamic Fetch',
+                              style: TextStyle(color: Colors.grey[700]),
                             ),
                           ],
                         ),
@@ -220,46 +296,64 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-      });
+    if (!_formKey.currentState!.validate()) return;
 
-      // Test server connectivity first
-      final isServerReachable = await ApiService.checkServerConnectivity();
-      if (!isServerReachable) {
-        setState(() {
-          _isLoading = false;
-        });
-        _showErrorDialog('Server is not reachable. Please check your connection.');
-        return;
-      }
+    setState(() {
+      _isLoading = true;
+      _loginStatus = null;
+    });
 
-      final success = await _authService.login(
-        _usernameController.text.trim(),
-        _passwordController.text.trim(),
+    try {
+      final response = await _authService.login(
+        username: _usernameController.text.trim(),
+        password: _passwordController.text.trim(),
       );
 
       setState(() {
         _isLoading = false;
       });
 
-      if (success) {
-        // Save remember me preference
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('rememberMe', _rememberMe);
+      if (response['success'] == true) {
+        setState(() {
+          _loginStatus = '✅ Login successful! Fetching production lines...';
+        });
 
-        if (_rememberMe) {
-          await prefs.setString('username', _usernameController.text.trim());
-        } else {
-          await prefs.remove('username');
-        }
+        // ✅ Small delay to show success message
+        await Future.delayed(const Duration(milliseconds: 500));
 
-        _navigateToHome();
+        _showSuccessDialog("Login Successful!");
       } else {
-        _showErrorDialog('Invalid username or password. Please try again.');
+        setState(() {
+          _loginStatus = '❌ ${response['error']}';
+        });
       }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _loginStatus = '❌ Network error: Please check your connection';
+      });
     }
+  }
+
+  Future<void> _saveRememberMePreference(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('rememberMe', value);
+  }
+
+  void _showForgotPasswordDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Forgot Password?'),
+        content: const Text('Please contact your system administrator to reset your password.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showErrorDialog(String message) {
@@ -272,6 +366,41 @@ class _LoginScreenState extends State<LoginScreen> {
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSuccessDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Login Successful'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message),
+            const SizedBox(height: 10),
+            if (_authService.currentUser != null) ...[
+              Text('User: ${_authService.fullName}'),
+              const SizedBox(height: 5),
+              Text('User ID: ${_authService.userId}'),
+              const SizedBox(height: 5),
+              Text('Assigned Line: ${_authService.assignedLine ?? "All Lines"}'),
+              const SizedBox(height: 5),
+              Text('Available Lines: ${_authService.userLines.length}'),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _navigateToHome();
+            },
+            child: const Text('Continue'),
           ),
         ],
       ),
