@@ -1,37 +1,47 @@
 class User {
+  final String id;
   final String username;
-  final String password;
+  final String fullName;
   final String email;
   final String assignedLine;
-  final String fullName;
+  final String tenantId;
+  final String? department;
+  final String? role;
 
   User({
+    required this.id,
     required this.username,
-    required this.password,
+    required this.fullName,
     required this.email,
     required this.assignedLine,
-    required this.fullName,
+    required this.tenantId,
+    this.department,
+    this.role,
   });
 
-  // Convert User to Map
-  Map<String, dynamic> toMap() {
-    return {
-      'username': username,
-      'password': password,
-      'email': email,
-      'assignedLine': assignedLine,
-      'fullName': fullName,
-    };
+  factory User.fromJson(Map<String, dynamic> json) {
+    return User(
+      id: json['id'] ?? json['userId'] ?? '',
+      username: json['username'] ?? json['userName'] ?? '',
+      fullName: json['fullName'] ?? json['name'] ?? 'Unknown User',
+      email: json['email'] ?? '',
+      assignedLine: json['assignedLine'] ?? json['line'] ?? 'Not assigned',
+      tenantId: json['tenantId'] ?? '',
+      department: json['department'],
+      role: json['role'],
+    );
   }
 
-  // Create User from Map
-  static User fromMap(Map<String, dynamic> map) {
-    return User(
-      username: map['username'],
-      password: map['password'],
-      email: map['email'],
-      assignedLine: map['assignedLine'],
-      fullName: map['fullName'],
-    );
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'username': username,
+      'fullName': fullName,
+      'email': email,
+      'assignedLine': assignedLine,
+      'tenantId': tenantId,
+      'department': department,
+      'role': role,
+    };
   }
 }

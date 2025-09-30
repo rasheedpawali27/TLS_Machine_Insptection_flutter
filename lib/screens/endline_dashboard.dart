@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:tls_inspection_machine/screens/bundle_inspection_screen.dart';
 import 'package:tls_inspection_machine/screens/endline_inspection_screen.dart';
 
 class EndlineDashboardScreen extends StatefulWidget {

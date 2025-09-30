@@ -22,39 +22,44 @@ class MachineStatusScreen extends StatefulWidget {
 class _MachineStatusScreenState extends State<MachineStatusScreen> {
   final MachineStatusController _controller = MachineStatusController();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  bool _isInitializing = true;
 
   @override
   void initState() {
     super.initState();
-    _controller.initState();
+    _initializeController();
+  }
+
+  Future<void> _initializeController() async {
+    await _controller.initState();
+    setState(() {
+      _isInitializing = false;
+    });
   }
 
   // Navigation functions
   void _navigateToInlineInspection() {
-    Navigator.pop(context); // Close drawer
-    // Already on inline inspection screen
+    Navigator.pop(context);
   }
 
   void _navigateToEndlineInspection() {
-    Navigator.pop(context); // Close drawer
+    Navigator.pop(context);
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const EndlineDashboardScreen()),
     );
   }
 
-  void _navigateToGnuSummary() {
-    Navigator.pop(context); // Close drawer
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("GNU Summary Selected"),
-        behavior: SnackBarBehavior.floating,
-      ),
+  void _navigateToDHUSummary() {
+    Navigator.pop(context);
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const DHUSummaryScreen()),
     );
   }
 
   void _navigateToRoundWiseSummary() {
-    Navigator.pop(context); // Close drawer
+    Navigator.pop(context);
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const RoundWiseSummaryScreen()),
@@ -62,28 +67,60 @@ class _MachineStatusScreenState extends State<MachineStatusScreen> {
   }
 
   void _navigateToOperationBulletin() {
-    Navigator.pop(context); // Close drawer
-    Navigator.push(
+    Navigator.pop(context);
+   /* Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const OperationBulletinScreen()),
-    );
+    );*/
   }
 
   void _navigateToSettings() {
-    Navigator.pop(context); // Close drawer
-    Navigator.push(
+    Navigator.pop(context);
+   /* Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const SettingsScreen()),
-    );
+    );*/
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isInitializing) {
+      return Scaffold(
+        backgroundColor: Colors.blue[50],
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 20),
+              Text(
+                'Loading Production Data...',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.blue[800],
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Fetching lines and machines from database',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.blue[600],
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       key: _scaffoldKey,
       appBar: AppBar(
         title: Text(
-          "INLINE INSPECTION  DENIM - ${_controller.authService.currentUser?.fullName ?? 'Machine Status'}",
+          "INLINE INSPECTION DENIM - ${_controller.authService.fullName ?? 'Machine Status'}",
           style: const TextStyle(
             fontWeight: FontWeight.bold,
             color: Colors.white,
@@ -201,12 +238,21 @@ class _MachineStatusScreenState extends State<MachineStatusScreen> {
                   Image.asset("assets/images/login.png", width: 170),
                   const SizedBox(height: 15),
                   Text(
-                    '${_controller.authService.currentUser?.fullName ?? 'User'}',
+                    '${_controller.authService.fullName ?? 'User'}',
                     style: const TextStyle(color: Colors.white, fontSize: 16),
                   ),
                   Text(
-                    'Line: ${_controller.authService.currentUser?.assignedLine ?? 'Not assigned'}',
+                    'User ID: ${_controller.authService.userId ?? 'N/A'}',
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    'Line: ${_controller.authService.assignedLine ?? 'All Lines'}',
                     style: const TextStyle(color: Colors.white, fontSize: 14),
+                  ),
+                  Text(
+                    'Available Lines: ${_controller.authService.userLines.length}',
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
                   ),
                 ],
               ),
@@ -224,15 +270,7 @@ class _MachineStatusScreenState extends State<MachineStatusScreen> {
             ListTile(
               leading: const Icon(Icons.summarize, color: Colors.blue),
               title: const Text('DHU Summary'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const DHUSummaryScreen(),
-                  ),
-                );
-              },
+              onTap: _navigateToDHUSummary,
             ),
             ListTile(
               leading: const Icon(Icons.bar_chart, color: Colors.blue),
@@ -249,6 +287,33 @@ class _MachineStatusScreenState extends State<MachineStatusScreen> {
               leading: const Icon(Icons.settings, color: Colors.blue),
               title: const Text('Settings'),
               onTap: _navigateToSettings,
+            ),
+            // Database Info Section
+            Container(
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Database Info',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text('Current Line: ${_controller.selectedLine ?? 'None'}'),
+                  Text('Available Lines: ${_controller.availableLines.length}'),
+                  Text('Available Machines: ${_controller.availableMachines.length}'),
+                  Text('User Access: ${_controller.authService.hasAccessToAllLines ? 'All Lines' : 'Specific Lines'}'),
+                ],
+              ),
             ),
           ],
         ),
@@ -277,7 +342,7 @@ class _MachineStatusScreenState extends State<MachineStatusScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              "Welcome, ${_controller.authService.currentUser?.fullName ?? 'User'}",
+              "Welcome, ${_controller.authService.fullName ?? 'User'}",
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -286,21 +351,29 @@ class _MachineStatusScreenState extends State<MachineStatusScreen> {
             ),
             const SizedBox(height: 10),
             Text(
-              "Assigned Line: ${_controller.authService.currentUser?.assignedLine ?? 'Not assigned'}",
+              "User ID: ${_controller.authService.userId ?? 'N/A'}",
+              style: TextStyle(fontSize: 16, color: Colors.blue[700]),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              "Assigned Line: ${_controller.authService.assignedLine ?? 'All Lines'}",
               style: TextStyle(fontSize: 18, color: Colors.blue[700]),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              "Available Lines: ${_controller.authService.userLines.length}",
+              style: TextStyle(fontSize: 14, color: Colors.blue[600]),
             ),
             const SizedBox(height: 20),
             const Icon(Icons.factory, size: 60, color: Colors.blue),
             const SizedBox(height: 20),
-            if (_controller.authService.currentUser != null)
+
+            // Go to Assigned Line Button
+            if (_controller.authService.assignedLine != null)
               ElevatedButton(
                 onPressed: () {
                   setState(() {
-                    _controller.selectedLine = _controller.authService.currentUser!.assignedLine;
-                    if (_controller.selectedLine != null && _controller.machines.isNotEmpty) {
-                      _controller.selectedMachine = _controller.machines.first;
-                      _controller.updateInspectionPieces();
-                    }
+                    _controller.selectedLine = _controller.authService.assignedLine;
                   });
                 },
                 style: ElevatedButton.styleFrom(
@@ -313,11 +386,14 @@ class _MachineStatusScreenState extends State<MachineStatusScreen> {
                 ),
                 child: const Text('Go to My Assigned Line'),
               ),
+
             const SizedBox(height: 20),
+
+            // Line Selection Dropdown
             DropdownButtonFormField<String>(
               value: _controller.selectedLine,
               decoration: InputDecoration(
-                labelText: "Or Select Different Line",
+                labelText: "Select Production Line",
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -325,8 +401,11 @@ class _MachineStatusScreenState extends State<MachineStatusScreen> {
                 filled: true,
                 fillColor: Colors.white,
               ),
-              items: _controller.lines.map((String line) {
-                return DropdownMenuItem<String>(value: line, child: Text(line));
+              items: _controller.lineNames.map((String line) {
+                return DropdownMenuItem<String>(
+                  value: line,
+                  child: Text(line),
+                );
               }).toList(),
               onChanged: (String? newValue) {
                 setState(() {
@@ -334,6 +413,58 @@ class _MachineStatusScreenState extends State<MachineStatusScreen> {
                 });
               },
               isExpanded: true,
+            ),
+
+            const SizedBox(height: 20),
+
+            // Database Connection Status
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Database Connection:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.check_circle,
+                        color: _controller.availableLines.isNotEmpty ? Colors.green : Colors.red,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _controller.availableLines.isNotEmpty ? 'Connected' : 'Disconnected',
+                        style: TextStyle(
+                          color: _controller.availableLines.isNotEmpty ? Colors.green : Colors.red,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    'Lines: ${_controller.availableLines.length}',
+                    style: TextStyle(color: Colors.grey[700]),
+                  ),
+                  Text(
+                    'Machines: ${_controller.availableMachines.length}',
+                    style: TextStyle(color: Colors.grey[700]),
+                  ),
+                  Text(
+                    'Access: ${_controller.authService.hasAccessToAllLines ? 'All Lines' : 'Specific Lines'}',
+                    style: TextStyle(color: Colors.grey[700]),
+                  ),
+                ],
+              ),
             ),
           ],
         ),

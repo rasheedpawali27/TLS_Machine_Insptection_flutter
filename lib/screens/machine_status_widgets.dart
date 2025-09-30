@@ -8,13 +8,29 @@ class MachineStatusWidgets {
       BuildContext context,
       void Function(void Function()) setState,
       ) {
-    if (controller.selectedMachine == null) {
+    // ✅ FIX: Check if machines are available instead of selectedMachine
+    if (controller.machines.isEmpty) {
       return const Center(
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          valueColor: AlwaysStoppedAnimation(Colors.white),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation(Colors.white),
+            ),
+            SizedBox(height: 10),
+            Text(
+              'Loading Machines...',
+              style: TextStyle(color: Colors.white),
+            ),
+          ],
         ),
       );
+    }
+
+    // ✅ FIX: Check if selectedMachine is available, if not select first one
+    if (controller.selectedMachine == null && controller.machines.isNotEmpty) {
+      controller.selectedMachine = controller.machines.first;
     }
 
     final currentStatus =
@@ -30,8 +46,12 @@ class MachineStatusWidgets {
             {"red": 0, "yellow": 0, "green": 0, "blue": 0};
 
     // Get current round and round statuses
-    final currentRound = controller.getCurrentRound(controller.selectedMachine!);
-    final roundStatuses = controller.machineRoundStatuses[controller.selectedMachine!] ?? ["grey", "grey", "grey", "grey"];
+    final currentRound = controller.getCurrentRound(
+      controller.selectedMachine!,
+    );
+    final roundStatuses =
+        controller.machineRoundStatuses[controller.selectedMachine!] ??
+            ["grey", "grey", "grey", "grey"];
 
     return Column(
       children: [
@@ -60,13 +80,13 @@ class MachineStatusWidgets {
                       color: Colors.white,
                     ),
                     underline: Container(),
-                    items: controller.lines.map((String line) {
+                    items: controller.lineNames.map((String line) {
                       return DropdownMenuItem<String>(
                         value: line,
                         child: Text(line),
                       );
                     }).toList(),
-                    onChanged: (String? newValue) {
+                    onChanged: (String? newValue) async {
                       setState(() {
                         controller.selectLine(newValue);
                       });
@@ -179,7 +199,11 @@ class MachineStatusWidgets {
             children: [
               const Text(
                 "Current Round: ",
-                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               Text(
                 "$currentRound/4",
@@ -200,7 +224,9 @@ class MachineStatusWidgets {
                     child: Text(
                       '${index + 1}',
                       style: TextStyle(
-                        color: roundStatuses[index] == "grey" ? Colors.black : Colors.white,
+                        color: roundStatuses[index] == "grey"
+                            ? Colors.black
+                            : Colors.white,
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
                       ),
@@ -304,9 +330,11 @@ class MachineStatusWidgets {
                               children: [
                                 Icon(
                                   controller.getMachineIcon(
-                                      controller.selectedMachine!),
+                                    controller.selectedMachine!,
+                                  ),
                                   color: controller.getMachineColor(
-                                      controller.selectedMachine!),
+                                    controller.selectedMachine!,
+                                  ),
                                 ),
                                 const SizedBox(width: 10),
                                 Text(
@@ -315,7 +343,8 @@ class MachineStatusWidgets {
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
                                     color: controller.getMachineColor(
-                                        controller.selectedMachine!),
+                                      controller.selectedMachine!,
+                                    ),
                                   ),
                                 ),
                                 if (isCTQ) ...[
@@ -349,7 +378,8 @@ class MachineStatusWidgets {
                             Text('Line: ${controller.selectedLine}'),
                             const SizedBox(height: 10),
                             Text(
-                                'Last Updated: ${controller.formatDate(lastUpdated)}'),
+                              'Last Updated: ${controller.formatDate(lastUpdated)}',
+                            ),
                             const SizedBox(height: 10),
                             Text(
                               'Operation Type: ${isCTQ ? "CTQ (10 pieces)" : "Non-CTQ (5 pieces)"}',
@@ -362,7 +392,9 @@ class MachineStatusWidgets {
                             const SizedBox(height: 10),
                             Text(
                               "Current Round: $currentRound/4",
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ],
                         ),
@@ -457,7 +489,8 @@ class MachineStatusWidgets {
                                 onPressed: () {
                                   setState(() {
                                     controller.fixMachineFaults(
-                                        controller.selectedMachine!);
+                                      controller.selectedMachine!,
+                                    );
                                   });
                                 },
                                 style: ElevatedButton.styleFrom(
@@ -481,7 +514,7 @@ class MachineStatusWidgets {
           ),
         ),
 
-        // Machine list at the bottom
+        // Machine list at the bottom - FIXED VERSION
         Container(
           height: 350,
           margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
@@ -493,15 +526,33 @@ class MachineStatusWidgets {
             borderRadius: BorderRadius.circular(20),
             child: controller.machines.isEmpty
                 ? Center(
-              child: Text(
-                "No machines available for ${controller.selectedLine}",
-                style:
-                const TextStyle(color: Colors.white, fontSize: 16),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.build_circle_outlined,
+                    color: Colors.white,
+                    size: 50,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "No machines available for ${controller.selectedLine}",
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    "Available Machines: ${controller.availableMachines.length}",
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
               ),
             )
                 : GridView.builder(
-              gridDelegate:
-              const SliverGridDelegateWithFixedCrossAxisCount(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 4,
                 mainAxisSpacing: 6.0,
                 crossAxisSpacing: 6.0,
@@ -514,7 +565,9 @@ class MachineStatusWidgets {
                 final isCTQ = controller.isMachineCTQ(machine);
 
                 // Get round statuses for this machine
-                final roundStatuses = controller.machineRoundStatuses[machine] ?? ["grey", "grey", "grey", "grey"];
+                final roundStatuses =
+                    controller.machineRoundStatuses[machine] ??
+                        ["grey", "grey", "grey", "grey"];
 
                 return GestureDetector(
                   onTap: () {
@@ -546,11 +599,11 @@ class MachineStatusWidgets {
                         Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            // Machine image with fallback to icon - Made smaller
+                            // Machine image with fallback to icon
                             Center(
                               child: Container(
-                                height: 60, // Reduced from 80
-                                width: 60,  // Reduced from 80
+                                height: 60,
+                                width: 60,
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(6),
                                   color: Colors.white.withOpacity(0.2),
@@ -561,20 +614,21 @@ class MachineStatusWidgets {
                                     "assets/images/machine.png",
                                     color: Colors.white,
                                     fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) {
+                                    errorBuilder:
+                                        (context, error, stackTrace) {
                                       return Icon(
                                         controller.getMachineIcon(machine),
                                         color: Colors.white,
-                                        size: 24, // Reduced from 30
+                                        size: 24,
                                       );
                                     },
                                   ),
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 4), // Reduced from 6
+                            const SizedBox(height: 4),
 
-                            // Machine name - Smaller font
+                            // Machine name
                             Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 2),
                               child: Text(
@@ -582,7 +636,7 @@ class MachineStatusWidgets {
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 10, // Reduced from 12
+                                  fontSize: 10,
                                 ),
                                 textAlign: TextAlign.center,
                                 maxLines: 1,
@@ -590,9 +644,9 @@ class MachineStatusWidgets {
                               ),
                             ),
 
-                            const SizedBox(height: 6), // Reduced from 8
+                            const SizedBox(height: 6),
 
-                            // ✅ Row of 4 round status cards - Made more compact
+                            // ✅ Row of 4 round status cards
                             SingleChildScrollView(
                               scrollDirection: Axis.horizontal,
                               child: Row(
@@ -600,30 +654,35 @@ class MachineStatusWidgets {
                                 children: List.generate(4, (index) {
                                   final status = roundStatuses[index];
                                   final roundNumber = index + 1;
+                                  final currentRound = controller.getCurrentRound(machine);
                                   final isActive = roundNumber <= currentRound;
 
                                   return GestureDetector(
                                     onTap: () {
                                       if (isActive) {
-                                        controller.showRoundDetails(context, machine, roundNumber);
+                                        controller.showRoundDetails(
+                                          context,
+                                          machine,
+                                          roundNumber,
+                                        );
                                       }
                                     },
                                     child: Container(
-                                      margin: const EdgeInsets.symmetric(horizontal: 2), // Reduced from 4
-                                      width: 26, // Reduced from 30
-                                      height: 36, // Reduced from 40
+                                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                                      width: 26,
+                                      height: 36,
                                       decoration: BoxDecoration(
                                         color: _getStatusColor(status),
-                                        borderRadius: BorderRadius.circular(6), // Reduced from 8
+                                        borderRadius: BorderRadius.circular(6),
                                         border: Border.all(
                                           color: Colors.white,
-                                          width: 1.5, // Reduced from 2
+                                          width: 1.5,
                                         ),
                                         boxShadow: [
                                           BoxShadow(
                                             color: Colors.black.withOpacity(0.2),
-                                            blurRadius: 3, // Reduced from 4
-                                            offset: const Offset(0, 1), // Reduced from 2
+                                            blurRadius: 3,
+                                            offset: const Offset(0, 1),
                                           ),
                                         ],
                                       ),
@@ -634,14 +693,14 @@ class MachineStatusWidgets {
                                             '$roundNumber',
                                             style: TextStyle(
                                               color: status == "grey" ? Colors.black : Colors.white,
-                                              fontSize: 12, // Reduced from 14
+                                              fontSize: 12,
                                               fontWeight: FontWeight.bold,
                                             ),
                                           ),
-                                          const SizedBox(height: 2), // Reduced from 4
+                                          const SizedBox(height: 2),
                                           Icon(
                                             _getStatusIcon(status),
-                                            size: 12, // Reduced from 16
+                                            size: 12,
                                             color: status == "grey" ? Colors.black54 : Colors.white,
                                           ),
                                         ],
@@ -655,19 +714,19 @@ class MachineStatusWidgets {
                         ),
                         if (isCTQ)
                           Positioned(
-                            top: 2, // Reduced from 3
-                            right: 2, // Reduced from 3
+                            top: 2,
+                            right: 2,
                             child: Container(
-                              padding: const EdgeInsets.all(2), // Reduced from 3
+                              padding: const EdgeInsets.all(2),
                               decoration: BoxDecoration(
                                 color: Colors.red,
-                                borderRadius: BorderRadius.circular(6), // Reduced from 8
+                                borderRadius: BorderRadius.circular(6),
                               ),
                               child: const Text(
                                 'CTQ',
                                 style: TextStyle(
                                   color: Colors.white,
-                                  fontSize: 7, // Reduced from 8
+                                  fontSize: 7,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -684,6 +743,7 @@ class MachineStatusWidgets {
       ],
     );
   }
+
   static IconData _getStatusIcon(String status) {
     switch (status) {
       case "red":
@@ -719,10 +779,14 @@ class MachineStatusWidgets {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-
           const SizedBox(width: 12),
           buildStatusButton(
-              "Blue", "blue", Colors.blue[600]!, controller, setState),
+            "Blue",
+            "blue",
+            Colors.blue[600]!,
+            controller,
+            setState,
+          ),
         ],
       ),
     );
@@ -755,7 +819,6 @@ class MachineStatusWidgets {
     );
   }
 
-  /// ✅ FIX: Added `setState` so that UI refreshes after fault is removed
   static void showFixFaultDialog(
       BuildContext context,
       MachineStatusController controller,
@@ -788,7 +851,6 @@ class MachineStatusWidgets {
     );
   }
 
-  /// ✅ Helper to map status → color
   static Color _getStatusColor(String status) {
     switch (status) {
       case "red":
